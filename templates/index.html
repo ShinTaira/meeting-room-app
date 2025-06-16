@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>会議室予約システム</title>
+    <style>
+        /* 全体のスタイル */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-image: url("{{ url_for('static', filename='background.jpg') }}");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            color: #333;
+            margin: 0;
+            padding: 2em;
+        }
+
+        /* 全体を囲むコンテナ */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: rgba(255, 255, 255, 0.97); 
+            padding: 2em;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* (ヘッダー、フォーム、日付ナビなどのCSSは変更なし) */
+        .header { display: flex; align-items: center; margin-bottom: 2em; border-bottom: 1px solid #dee2e6; padding-bottom: 1em; }
+        .header h1 { margin: 0 0 0 15px; font-size: 1.8em; }
+        .form-container { background-color: #fafafa; border: 1px solid #e9ecef; padding: 1.5em 2em; margin-bottom: 2em; border-radius: 8px; }
+        .form-container h2 { margin-top: 0; }
+        .form-container p { margin-bottom: 1em; display: flex; align-items: center; gap: 1em; }
+        .form-container label { font-weight: bold; width: 100px; }
+        input[type="text"], input[type="date"], select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 1em; }
+        button[type="submit"] { background-color: #007bff; color: white; padding: 12px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 1em; transition: background-color 0.2s; }
+        button[type="submit"]:hover { background-color: #0056b3; }
+        .date-nav { margin-bottom: 1.5em; display: flex; align-items: center; gap: 1em; }
+        .date-nav a, .date-nav button { text-decoration: none; background-color: #e9ecef; color: #333; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; transition: background-color 0.2s; }
+        .date-nav a:hover, .date-nav button:hover { background-color: #ced4da; }
+        .date-nav h2 { margin: 0; font-size: 1.5em; }
+        
+        /* 時間割テーブルのスタイル */
+        .timetable {
+            border-collapse: collapse;
+            width: 100%;
+            table-layout: fixed;
+        }
+        .timetable th, .timetable td {
+            border: 1px solid #dee2e6;
+            padding: 8px;
+            text-align: center;
+            height: 40px;
+        }
+        .timetable th {
+            background-color: #f8f9fa;
+        }
+        .timetable td.time-header {
+            font-weight: bold;
+            background-color: #f8f9fa;
+        }
+        
+        /* ★ここから予約済みのマスのスタイルを修正 */
+        .timetable td.booked {
+            background-color: #fff0e1; /* 温かみのあるオレンジ色 */
+            color: #854d0e;            /* 濃い茶色で見やすく */
+            font-weight: 500;          /* 少し太字に */
+            border-color: #ffddb3;     /* 枠線も同系色に */
+            font-size: 0.9em;
+            vertical-align: middle;
+        }
+        /* ★ここまで修正 */
+
+        .timetable td.vacant:hover {
+             background-color: #e2f0d9;
+             cursor: pointer;
+        }
+        .cancel-btn {
+            font-size: 0.8em;
+            padding: 2px 6px;
+            margin-left: 5px;
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .cancel-btn:hover {
+            background-color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- (HTMLの中身は変更ありません) -->
+        <div class="header">
+            <img src="{{ url_for('static', filename='icon.jpg') }}" alt="予約アイコン" width="60">
+            <h1>会議室 予約状況</h1>
+        </div>
+        <div class="form-container">
+            <h2>新しい予約を作成</h2>
+            <form action="/reserve" method="post">
+                <p><label>会議室:</label><select name="room_name">{% for r in rooms %}<option value="{{r}}">{{r}}</option>{% endfor %}</select></p>
+                <p><label>予約者名:</label><input type="text" name="user_name" required></p>
+                <p><label>目的:</label><input type="text" name="purpose" required></p>
+                <p><label>日付:</label><input type="date" name="date" value="{{ target_date_str }}" required></p>
+                <p><label>開始時刻:</label><select name="start_time"></select></p>
+                <p><label>終了時刻:</label><select name="end_time"></select></p>
+                <p><label></label><button type="submit">予約する</button></p>
+            </form>
+        </div>
+        <div class="date-nav">
+            <a href="{{ url_for('index', date_str=prev_date) }}">＜ 前の日</a>
+            <h2>{{ target_date_str }}</h2>
+            <a href="{{ url_for('index', date_str=next_date) }}">次の日 ＞</a>
+            <form id="date-jump-form" style="margin-left: 2em;">
+                 <input type="date" id="date-picker" value="{{ target_date_str }}">
+                 <button type="button" onclick="jumpToDate()">ジャンプ</button>
+            </form>
+        </div>
+        <table class="timetable">
+            <thead>
+                <tr>
+                    <th style="width: 10%;">時間</th>
+                    {% for room in rooms %}<th>{{ room }}</th>{% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for time in time_slots %}
+                <tr>
+                    <td class="time-header">{{ time }}</td>
+                    {% for room in rooms %}
+                        {% set cell_data = timetable[time][room] %}
+                        {% if cell_data and cell_data != " " %}
+                            <td class="booked">
+                                {{ cell_data.user }} ({{ cell_data.purpose }})
+                                <form action="{{ url_for('cancel', reservation_id=cell_data.id) }}" method="post" style="display:inline;"><button type="submit" class="cancel-btn" title="キャンセルする">✕</button></form>
+                            </td>
+                        {% elif cell_data == " " %}
+                            <td class="booked"></td>
+                        {% else %}
+                            <td class="vacant">空室</td>
+                        {% endif %}
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- (JavaScript部分は変更なし) -->
+    <script>
+        function jumpToDate() {
+            const date = document.getElementById('date-picker').value;
+            if (date) { window.location.href = '/' + date; }
+        }
+        const startTimeSelect = document.querySelector('select[name="start_time"]');
+        const endTimeSelect = document.querySelector('select[name="end_time"]');
+        for (let h = 9; h < 24; h++) {
+            for (let m of ['00', '30']) {
+                const time = `${String(h).padStart(2, '0')}:${m}`;
+                if (h < 23 || m === '00') { startTimeSelect.add(new Option(time, time)); }
+                if (h > 9 || m === '30') { endTimeSelect.add(new Option(time, time)); }
+            }
+        }
+    </script>
+</body>
+</html>
