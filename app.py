@@ -1,4 +1,4 @@
-# app.py (予約キャンセル機能付き)
+# app.py (Googleカレンダー風デザイン対応版)
 
 from flask import Flask, render_template, request, redirect, url_for
 from SpinTechnologyMeetingRoomBookingSystemApp import ReservationSystem
@@ -11,12 +11,14 @@ system = ReservationSystem()
 @app.route('/<date_str>')
 def index(date_str=None):
     if date_str is None:
-        target_date = datetime.date.today()
-    else:
-        try:
-            target_date = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
-        except ValueError:
-            target_date = datetime.date.today()
+        # ★修正: 日付指定がない場合は、必ず今日の日付にリダイレクトする
+        return redirect(url_for('index', date_str=datetime.date.today().strftime('%Y-%m-%d')))
+    
+    try:
+        target_date = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        # ★修正: 不正な日付形式の場合も今日にリダイレクト
+        return redirect(url_for('index', date_str=datetime.date.today().strftime('%Y-%m-%d')))
 
     time_slots = [f"{h:02d}:{m:02d}" for h in range(9, 24) for m in (0, 30)]
     reservations_for_day = [r for r in system.reservations if r['start_time'].date() == target_date]
@@ -26,19 +28,19 @@ def index(date_str=None):
         row = {}
         time_as_dt = datetime.datetime.strptime(time_slot, '%H:%M').time()
         for room in system.rooms:
-            # ★修正: デフォルトはNone(空)にする
-            cell_data = None 
+            cell_data = None
             for res in reservations_for_day:
                 if res['room_name'] == room and res['start_time'].time() <= time_as_dt < res['end_time'].time():
-                    # ★修正: 予約IDも格納する
+                    # ★修正: 予約の長さ(分)と、何番目のブロックかの情報を追加
+                    duration_minutes = (res['end_time'] - res['start_time']).total_seconds() / 60
+                    time_diff_minutes = ((datetime.datetime.combine(datetime.date.min, time_as_dt) - 
+                                          datetime.datetime.combine(datetime.date.min, res['start_time'].time())).total_seconds() / 60)
+                    
                     cell_data = {
-                        "user": res['user_name'],
-                        "purpose": res['purpose'],
-                        "id": res['id']
+                        "user": res['user_name'], "purpose": res['purpose'], "id": res['id'],
+                        "duration": duration_minutes,
+                        "is_first_block": res['start_time'].time() == time_as_dt,
                     }
-                    # 予約の開始時刻の場合のみセルに表示
-                    if res['start_time'].time() != time_as_dt:
-                        cell_data = " " # 予約の2枠目以降は空白
                     break
             row[room] = cell_data
         timetable[time_slot] = row
@@ -51,7 +53,9 @@ def index(date_str=None):
         target_date_str=target_date.strftime('%Y-%m-%d'),
         timetable=timetable,
         time_slots=time_slots,
-        rooms=system.rooms
+        rooms=system.rooms,
+        prev_date=prev_date,
+        next_date=next_date
     )
 
 @app.route('/reserve', methods=['POST'])
@@ -73,19 +77,15 @@ def reserve():
     
     return redirect(url_for('index', date_str=date))
 
-# ★ここから新しい関数を追加
 @app.route('/cancel/<reservation_id>', methods=['POST'])
 def cancel(reservation_id):
-    """予約をキャンセルする"""
-    # キャンセルする前に、どの日のページに戻るか日付を取得しておく
     target_reservation = next((r for r in system.reservations if r['id'] == reservation_id), None)
     if target_reservation:
         date_str = target_reservation['start_time'].strftime('%Y-%m-%d')
         system.cancel_reservation(reservation_id)
         return redirect(url_for('index', date_str=date_str))
     
-    # 予約が見つからなかった場合はトップページへ
-    return redirect(url_for('index'))
+    return redirect(url_for('index', date_str=datetime.date.today().strftime('%Y-%m-%d')))
 
 
 if __name__ == '__main__':
