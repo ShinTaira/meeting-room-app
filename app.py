@@ -1,4 +1,4 @@
-# app.py (Googleカレンダー風デザイン対応版)
+# app.py (最終版)
 
 from flask import Flask, render_template, request, redirect, url_for
 from SpinTechnologyMeetingRoomBookingSystemApp import ReservationSystem
@@ -11,13 +11,11 @@ system = ReservationSystem()
 @app.route('/<date_str>')
 def index(date_str=None):
     if date_str is None:
-        # ★修正: 日付指定がない場合は、必ず今日の日付にリダイレクトする
         return redirect(url_for('index', date_str=datetime.date.today().strftime('%Y-%m-%d')))
     
     try:
         target_date = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
     except (ValueError, TypeError):
-        # ★修正: 不正な日付形式の場合も今日にリダイレクト
         return redirect(url_for('index', date_str=datetime.date.today().strftime('%Y-%m-%d')))
 
     time_slots = [f"{h:02d}:{m:02d}" for h in range(9, 24) for m in (0, 30)]
@@ -31,10 +29,7 @@ def index(date_str=None):
             cell_data = None
             for res in reservations_for_day:
                 if res['room_name'] == room and res['start_time'].time() <= time_as_dt < res['end_time'].time():
-                    # ★修正: 予約の長さ(分)と、何番目のブロックかの情報を追加
                     duration_minutes = (res['end_time'] - res['start_time']).total_seconds() / 60
-                    time_diff_minutes = ((datetime.datetime.combine(datetime.date.min, time_as_dt) - 
-                                          datetime.datetime.combine(datetime.date.min, res['start_time'].time())).total_seconds() / 60)
                     
                     cell_data = {
                         "user": res['user_name'], "purpose": res['purpose'], "id": res['id'],
