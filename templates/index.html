@@ -31,9 +31,9 @@
                       {% if cell_data and cell_data.is_first_block %}
                           <div class="reservation-bar" style="top: {{ cell_data.top + 45 }}px; height: {{ cell_data.height }}px; background-color: {% if cell_data.user_id == current_user.id %}#198754{% else %}#0d6efd{% endif %}; border-color: {% if cell_data.user_id == current_user.id %}#146c43{% else %}#0a58ca{% endif %};">
                               {% if cell_data.user_id == current_user.id %}
-                              <a href="{{ url_for('edit_reservation', reservation_id=cell_data.id) }}" class="edit-btn">✎</a>
+                              <a href="{{ url_for('edit_reservation', reservation_id=cell_data.id) }}" title="編集する" class="edit-btn">✎</a>
                               <form action="{{ url_for('cancel', reservation_id=cell_data.id) }}" method="post" class="cancel-form">
-                                  <button type="submit" class="cancel-btn">✕</button>
+                                  <button type="submit" title="キャンセルする" class="cancel-btn">✕</button>
                               </form>
                               {% endif %}
                               {{ cell_data.purpose }} ({{ cell_data.user }})
@@ -79,7 +79,7 @@
     // 日付ジャンプ
     function jumpToDate() {
         const date = document.getElementById('date-picker').value;
-        if (date) { window.location.href = '/?date_str=' + date; }
+        if (date) { window.location.href = "{{ url_for('index') }}?date_str=" + date; }
     }
 
     // 時刻プルダウン生成
