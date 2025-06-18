@@ -137,10 +137,10 @@ class ReservationSystem:
             json.dump(self.users, f, indent=4, ensure_ascii=False)
 
     def find_user_by_username(self, username):
-        return next((u for u in self.users if u['username'] == username), None)
+        return next((u for u in self.users if u and u.get('username') == username), None)
 
     def find_user_by_id(self, user_id):
-        return next((u for u in self.users if u['id'] == user_id), None)
+        return next((u for u in self.users if u and u.get('id') == user_id), None)
 
     def add_user(self, username, password):
         if self.find_user_by_username(username):
