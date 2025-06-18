@@ -94,7 +94,7 @@ def index(date_str=None):
                         "user": res['user_name'], "purpose": res['purpose'], "id": res['id'],
                         "top": top_pixel, "height": height_pixel - 2,
                         "is_first_block": res['start_time'].time() == time_as_dt,
-                        "user_id": res.get('user_id') # 予約者のIDを追加
+                        "user_id": res.get('user_id') # .get()を使うことで、キーがなくてもエラーにならない
                     }
                     break
             row[room] = cell_data
