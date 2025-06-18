@@ -1,129 +1,97 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <title>会議室予約システム</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background-image: url("{{ url_for('static', filename='background.jpg') }}");
-            background-size: cover; background-position: center; background-attachment: fixed;
-            color: #333; margin: 0; padding: 2em;
-        }
-        .container {
-            max-width: 1400px;
-            margin: 0 auto; background-color: rgba(255, 255, 255, 0.98); 
-            padding: 2em; border-radius: 12px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-        }
-        .header { display: flex; align-items: center; margin-bottom: 2em; border-bottom: 1px solid #dee2e6; padding-bottom: 1em; }
-        .header h1 { margin: 0 0 0 15px; font-size: 1.8em; }
-        .form-container { background-color: #fafafa; border: 1px solid #e9ecef; padding: 1.5em 2em; margin-bottom: 2em; border-radius: 8px; }
-        .form-container h2 { margin-top: 0; }
-        .form-container p { margin-bottom: 1em; display: flex; align-items: center; gap: 1em; }
-        .form-container label { font-weight: bold; width: 100px; }
-        input[type="text"], input[type="date"], select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 1em; }
-        button[type="submit"] { background-color: #007bff; color: white; padding: 12px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 1em; transition: background-color 0.2s; }
-        button[type="submit"]:hover { background-color: #0056b3; }
-        .date-nav { margin-bottom: 1.5em; display: flex; align-items: center; gap: 1em; }
-        .date-nav a, .date-nav button { text-decoration: none; background-color: #e9ecef; color: #333; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; transition: background-color 0.2s; }
-        .date-nav a:hover, .date-nav button:hover { background-color: #ced4da; }
-        .date-nav h2 { margin: 0; font-size: 1.5em; }
+{% extends "base.html" %}
 
-        .timeline-container { position: relative; }
-        .timeline-grid { display: grid; grid-template-columns: 60px repeat({{ rooms|length }}, 1fr); }
-        .time-labels { border-right: 1px solid #e0e0e0; }
-        .time-label { height: 60px; text-align: right; padding-right: 10px; color: #5f6368; font-size: 0.8em; box-sizing: border-box; }
-        .room-column { position: relative; border-right: 1px solid #e0e0e0; background-image: linear-gradient(to bottom, #e0e0e0 1px, transparent 1px); background-size: 100% 30px; }
-        .room-header { text-align: center; padding: 10px 0; border-bottom: 1px solid #e0e0e0; font-weight: bold; }
-        .reservation-bar {
-            position: absolute;
-            left: 5px; right: 5px;
-            background-color: #0d6efd; color: white;
-            border-radius: 4px; padding: 2px 8px;
-            font-size: 0.8em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
-            box-sizing: border-box; border: 1px solid #0a58ca;
-            z-index: 10;
-        }
-        .cancel-btn { background:none; border:none; color:white; cursor:pointer; font-size: 1.1em; float: right; padding: 0 2px; }
-        .cancel-btn:hover { color: #ffc107; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <img src="{{ url_for('static', filename='icon.jpg') }}" alt="予約アイコン" width="60">
-            <h1>会議室 予約状況</h1>
-        </div>
+{% block title %}会議室予約状況{% endblock %}
 
-        <div class="form-container">
-            <h2>新しい予約を作成</h2>
-            <form action="/reserve" method="post">
-                <p><label>会議室:</label><select name="room_name">{% for r in rooms %}<option value="{{r}}">{{r}}</option>{% endfor %}</select></p>
-                <p><label>予約者名:</label><input type="text" name="user_name" required></p>
-                <p><label>目的:</label><input type="text" name="purpose" required></p>
-                <p><label>日付:</label><input type="date" name="date" value="{{ target_date_str }}" required></p>
-                <p><label>開始時刻:</label><select name="start_time"></select></p>
-                <p><label>終了時刻:</label><select name="end_time"></select></p>
-                <p><label></label><button type="submit">予約する</button></p>
-            </form>
-        </div>
-
+{% block content %}
+    <div class="action-bar">
+        <button id="new-booking-btn">＋ 新しい予約</button>
         <div class="date-nav">
-            <a href="{{ url_for('index', date_str=prev_date) }}">＜ 前の日</a>
+            {% if show_prev_link %}<a href="{{ url_for('index', date_str=prev_date) }}">＜ 前の日</a>{% else %}<a class="disabled">＜ 前の日</a>{% endif %}
             <h2>{{ target_date_str }}</h2>
             <a href="{{ url_for('index', date_str=next_date) }}">次の日 ＞</a>
-            <form id="date-jump-form" style="margin-left: 2em;">
-                 <input type="date" id="date-picker" value="{{ target_date_str }}">
-                 <button type="button" onclick="jumpToDate()">ジャンプ</button>
+            <form id="date-jump-form">
+                <input type="date" id="date-picker" value="{{ target_date_str }}">
+                <button type="button" onclick="jumpToDate()">ジャンプ</button>
             </form>
         </div>
+    </div>
 
-        <div class="timeline-container">
-            <div class="timeline-grid">
-                <div class="time-labels">
-                    <div class="room-header">&nbsp;</div>
-                    {% for time in time_slots %}
-                        {% if time.endswith(':00') %}
-                        <div class="time-label">{{ time }}</div>
-                        {% endif %}
-                    {% endfor %}
-                </div>
-                {% for room in rooms %}
-                <div class="room-column">
-                    <div class="room-header">{{ room }}</div>
-                    {% for time in time_slots %}
-                        {% set cell_data = timetable[time][room] %}
-                        {% if cell_data and cell_data.is_first_block %}
-                            <div class="reservation-bar" 
-                                 style="top: {{ loop.index0 * 30 }}px; height: {{ cell_data.duration - 2 }}px;">
-                                <form action="{{ url_for('cancel', reservation_id=cell_data.id) }}" method="post" style="display:contents;">
-                                    <button type="submit" class="cancel-btn" title="キャンセルする">✕</button>
-                                </form>
-                                {{ cell_data.purpose }} ({{ cell_data.user }})
-                            </div>
-                        {% endif %}
-                    {% endfor %}
-                </div>
-                {% endfor %}
+    <div class="timeline-wrapper">
+      <div class="timeline-container">
+          <div class="timeline-grid">
+              <div class="time-labels">
+                  <div class="room-header">&nbsp;</div>
+                  {% for time in time_slots %}{% if time.endswith(':00') %}<div class="time-label">{{ time }}</div>{% endif %}{% endfor %}
+              </div>
+              {% for room in rooms %}
+              <div class="room-column">
+                  <div class="room-header">{{ room }}</div>
+                  {% for time in time_slots %}
+                      {% set cell_data = timetable[time][room] %}
+                      {% if cell_data and cell_data.is_first_block %}
+                          <div class="reservation-bar" style="top: {{ cell_data.top + 45 }}px; height: {{ cell_data.height }}px; background-color: {% if cell_data.user_id == current_user.id %}#198754{% else %}#0d6efd{% endif %}; border-color: {% if cell_data.user_id == current_user.id %}#146c43{% else %}#0a58ca{% endif %};">
+                              {% if cell_data.user_id == current_user.id %}
+                              <a href="{{ url_for('edit_reservation', reservation_id=cell_data.id) }}" class="edit-btn">✎</a>
+                              <form action="{{ url_for('cancel', reservation_id=cell_data.id) }}" method="post" class="cancel-form">
+                                  <button type="submit" class="cancel-btn">✕</button>
+                              </form>
+                              {% endif %}
+                              {{ cell_data.purpose }} ({{ cell_data.user }})
+                          </div>
+                      {% endif %}
+                  {% endfor %}
+              </div>
+              {% endfor %}
+          </div>
+      </div>
+    </div>
+
+    <div id="booking-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn">&times;</span>
+            <div class="form-container">
+                <h2>新しい予約を作成</h2>
+                <form action="{{ url_for('reserve') }}" method="post">
+                    <p><label>会議室:</label><select name="room_name">{% for r in rooms %}<option value="{{r}}">{{r}}</option>{% endfor %}</select></p>
+                    <p><label>目的:</label><input type="text" name="purpose" required></p>
+                    <p><label>日付:</label><input type="date" name="date" value="{{ target_date_str }}" required></p>
+                    <p><label>開始時刻:</label><select name="start_time"></select></p>
+                    <p><label>終了時刻:</label><select name="end_time"></select></p>
+                    <p><label>繰り返し:</label><select name="repeat_type"><option value="none" selected>なし</option><option value="weekly">毎週</option><option value="monthly">毎月</option></select></p>
+                    <p><label>繰り返し回数:</label><input type="number" name="repeat_count" value="4" min="1" max="52"></p>
+                    <p><button type="submit">予約する</button></p>
+                </form>
             </div>
         </div>
     </div>
-    
-    <script>
-        function jumpToDate() {
-            const date = document.getElementById('date-picker').value;
-            if (date) { window.location.href = '/' + date; }
-        }
+{% endblock %}
 
-        const startTimeSelect = document.querySelector('select[name="start_time"]');
-        const endTimeSelect = document.querySelector('select[name="end_time"]');
-        for (let h = 9; h < 24; h++) {
-            for (let m of ['00', '30']) {
-                const time = `${String(h).padStart(2, '0')}:${m}`;
-                if (h < 23 || m === '00') { startTimeSelect.add(new Option(time, time)); }
-                if (h > 9 || m === '30') { endTimeSelect.add(new Option(time, time)); }
-            }
+{% block scripts %}
+<script>
+    // モーダル操作
+    const modal = document.getElementById("booking-modal");
+    const btn = document.getElementById("new-booking-btn");
+    const span = document.getElementsByClassName("close-btn")[0];
+    btn.onclick = function() { modal.style.display = "flex"; }
+    span.onclick = function() { modal.style.display = "none"; }
+    window.onclick = function(event) { if (event.target == modal) { modal.style.display = "none"; } }
+
+    // 日付ジャンプ
+    function jumpToDate() {
+        const date = document.getElementById('date-picker').value;
+        if (date) { window.location.href = '/?date_str=' + date; }
+    }
+
+    // 時刻プルダウン生成
+    const startTimeSelect = modal.querySelector('select[name="start_time"]');
+    const endTimeSelect = modal.querySelector('select[name="end_time"]');
+    for (let h = 9; h < 24; h++) {
+        for (let m of ['00', '30']) {
+            const time = `${String(h).padStart(2, '0')}:${m}`;
+            if (h < 23 || m === '00') { startTimeSelect.add(new Option(time, time)); }
+            if (h > 9 || m === '30') { endTimeSelect.add(new Option(time, time)); }
         }
-    </script>
-</body>
-</html>
+    }
+    endTimeSelect.add(new Option('24:00', '24:00'));
+</script>
+{% endblock %}

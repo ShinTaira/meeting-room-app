@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}予約の編集{% endblock %}
+
+{% block content %}
+    <div class="form-container" style="max-width: 600px; margin: 2em auto;">
+        <h2>予約の編集</h2>
+        <form method="post">
+            <p><label>会議室:</label><select name="room_name">{% for r in rooms %}<option value="{{ r }}" {% if r == reservation.room_name %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></p>
+            <p><label>目的:</label><input type="text" name="purpose" value="{{ reservation.purpose }}" required></p>
+            <p><label>日付:</label><input type="date" name="date" value="{{ reservation.start_time.strftime('%Y-%m-%d') }}" required></p>
+            <p><label>開始時刻:</label><select name="start_time"></select></p>
+            <p><label>終了時刻:</label><select name="end_time"></select></p>
+            <p><button type="submit">更新する</button></p>
+        </form>
+        <div style="text-align: center; margin-top: 1em;">
+             <a href="{{ url_for('index', date_str=reservation.start_time.strftime('%Y-%m-%d')) }}">キャンセルして戻る</a>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const startTimeSelect = document.querySelector('select[name="start_time"]');
+    const endTimeSelect = document.querySelector('select[name="end_time"]');
+    const defaultStartTime = "{{ reservation.start_time.strftime('%H:%M') }}";
+    const defaultEndTime = "{{ reservation.end_time.strftime('%H:%M') }}";
+    for (let h = 9; h < 24; h++) {
+        for (let m of ['00', '30']) {
+            const time = `${String(h).padStart(2, '0')}:${m}`;
+            if (h < 23 || m === '00') {
+                const startOption = new Option(time, time);
+                if (time === defaultStartTime) startOption.selected = true;
+                startTimeSelect.add(startOption);
+            }
+            if (h > 9 || m === '30') {
+                const endOption = new Option(time, time);
+                if (time === defaultEndTime) endOption.selected = true;
+                endTimeSelect.add(endOption);
+            }
+        }
+    }
+    const endOption24 = new Option('24:00', '24:00');
+    if ('24:00' === defaultEndTime) endOption24.selected = true;
+    endTimeSelect.add(endOption24);
+</script>
+{% endblock %}

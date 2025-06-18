@@ -1,13 +1,26 @@
+# SpinTechnologyMeetingRoomBookingSystemApp.py (完成版)
+
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_login import UserMixin
+from dateutil.relativedelta import relativedelta
 import datetime
 import json
 import uuid
 import os
-from googleapiclient.discovery import build
-from calendar import monthrange
 
-# --- ファイルパスとエンコーダーの定義 ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 JSON_FILE_PATH = os.path.join(BASE_DIR, "reservations.json")
+USERS_JSON_FILE_PATH = os.path.join(BASE_DIR, "users.json")
+
+class User(UserMixin):
+    def __init__(self, user_data):
+        self.id = user_data.get('id')
+        self.username = user_data.get('username')
+        self.password_hash = user_data.get('password_hash')
+
+    @staticmethod
+    def check_password(password_hash, password):
+        return check_password_hash(password_hash, password)
 
 class DateTimeEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -15,120 +28,156 @@ class DateTimeEncoder(json.JSONEncoder):
             return obj.isoformat()
         return super().default(obj)
 
-# --- 予約システム本体 ---
 class ReservationSystem:
-    def __init__(self, filename=JSON_FILE_PATH):
+    def __init__(self, reservation_file=JSON_FILE_PATH, user_file=USERS_JSON_FILE_PATH):
         self.rooms = ["会議室A", "会議室B", "会議室C", "大部屋"]
-        self.filename = filename
-        self.reservations = self.load_from_file()
+        self.reservation_file = reservation_file
+        self.user_file = user_file
+        self.reservations = self.load_reservations()
+        self.users = self.load_users()
 
-    def load_from_file(self):
+    def make_reservation(self, user_name, purpose, room_name, start_time, end_time, user_id,
+                         repeat_type='none', repeat_count=0):
         try:
-            with open(self.filename, 'r', encoding='utf-8') as f:
-                reservations_data = json.load(f)
-                return [{**r, 'start_time': datetime.datetime.fromisoformat(r['start_time']), 'end_time': datetime.datetime.fromisoformat(r['end_time'])} for r in reservations_data]
+            start_dt = datetime.datetime.strptime(start_time, '%Y-%m-%d %H:%M')
+            end_dt = datetime.datetime.strptime(end_time, '%Y-%m-%d %H:%M')
+            repeat_count = int(repeat_count)
+        except (ValueError, TypeError):
+            return {"success": False, "message": "日時の形式が正しくありません。"}
+
+        reservations_to_add = []
+        reservations_to_add.append({
+            "id": str(uuid.uuid4()), "user_name": user_name, "purpose": purpose, 
+            "room_name": room_name, "start_time": start_dt, "end_time": end_dt, "user_id": user_id
+        })
+
+        if repeat_type != 'none' and repeat_count > 0:
+            current_start_dt, current_end_dt = start_dt, end_dt
+            for _ in range(repeat_count):
+                if repeat_type == 'weekly':
+                    current_start_dt += datetime.timedelta(weeks=1)
+                    current_end_dt += datetime.timedelta(weeks=1)
+                elif repeat_type == 'monthly':
+                    current_start_dt += relativedelta(months=1)
+                    current_end_dt += relativedelta(months=1)
+                
+                reservations_to_add.append({
+                    "id": str(uuid.uuid4()), "user_name": user_name, "purpose": purpose,
+                    "room_name": room_name, "start_time": current_start_dt, "end_time": current_end_dt, "user_id": user_id
+                })
+        
+        created_count, skipped_count = 0, 0
+        for new_res in reservations_to_add:
+            if not self.check_overlap(new_res['room_name'], new_res['start_time'], new_res['end_time']):
+                self.reservations.append(new_res)
+                created_count += 1
+            else:
+                skipped_count += 1
+        
+        if created_count > 0:
+            self.save_reservations()
+        
+        return {"success": True, "created": created_count, "skipped": skipped_count}
+
+    def cancel_reservation(self, reservation_id):
+        initial_len = len(self.reservations)
+        self.reservations = [r for r in self.reservations if r['id'] != reservation_id]
+        if len(self.reservations) < initial_len:
+            self.save_reservations()
+            return True
+        return False
+
+    def check_overlap(self, room_name, start_time, end_time, existing_reservation_id=None):
+        for r in self.reservations:
+            if r['id'] == existing_reservation_id:
+                continue
+            if r['room_name'] == room_name:
+                if start_time < r['end_time'] and r['start_time'] < end_time:
+                    return True
+        return False
+
+    def find_reservation_by_id(self, reservation_id):
+        return next((r for r in self.reservations if r['id'] == reservation_id), None)
+
+    def update_reservation(self, reservation_id, user_name, purpose, room_name, start_time, end_time, user_id):
+        reservation = self.find_reservation_by_id(reservation_id)
+        if reservation:
+            reservation.update({
+                'user_name': user_name, 'purpose': purpose, 'room_name': room_name,
+                'start_time': start_time, 'end_time': end_time, 'user_id': user_id
+            })
+            self.save_reservations()
+            return True
+        return False
+    
+    def load_reservations(self):
+        try:
+            with open(self.reservation_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            for item in data:
+                item['start_time'] = datetime.datetime.fromisoformat(item['start_time'])
+                item['end_time'] = datetime.datetime.fromisoformat(item['end_time'])
+            return data
         except (FileNotFoundError, json.JSONDecodeError):
             return []
 
-    def save_to_file(self):
-        with open(self.filename, 'w', encoding='utf-8') as f:
+    def save_reservations(self):
+        with open(self.reservation_file, 'w', encoding='utf-8') as f:
             json.dump(self.reservations, f, cls=DateTimeEncoder, indent=4, ensure_ascii=False)
 
-    def make_reservation(self, user_name, purpose, room_name, start_time, end_time):
+    def load_users(self):
         try:
-            start = datetime.datetime.fromisoformat(start_time)
-            end = datetime.datetime.fromisoformat(end_time)
-        except ValueError:
-            print(f"エラー: 時刻は 'YYYY-MM-DD HH:MM' の形式で入力してください。")
-            return False
-        if start >= end:
-            print("エラー: 終了時刻は開始時刻より後に設定してください。")
-            return False
-        if room_name not in self.rooms:
-            print(f"エラー: 会議室 '{room_name}' は存在しません。")
-            return False
-        if not (datetime.time(9, 0) <= start.time() and end.time() <= datetime.time(23, 30)):
-            print("エラー: 予約時間は 9:00 から 23:30 の間でなければなりません。")
-            return False
-        if start.minute not in [0, 30] or end.minute not in [0, 30]:
-            print("エラー: 予約時間は30分単位で指定してください。")
-            return False
-        for r in self.reservations:
-            if r['room_name'] == room_name and start < r['end_time'] and end > r['start_time']:
-                print(f"エラー: その時間帯は既に予約されています。（予約者: {r['user_name']}さん）")
-                return False
-        new_reservation = {'id': str(uuid.uuid4()), 'user_name': user_name, 'purpose': purpose, 'room_name': room_name, 'start_time': start, 'end_time': end}
-        self.reservations.append(new_reservation)
-        self.save_to_file()
-        print(f"予約完了: {room_name} | {start.strftime('%Y-%m-%d %H:%M')}-{end.strftime('%H:%M')} | {user_name}さん (目的: {purpose})")
-        return True
+            with open(self.user_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return []
 
-    def show_reservations(self, room_name, date_str):
-        try:
-            target_date = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
-        except ValueError:
-            print(f"エラー: 日付は 'YYYY-MM-DD' の形式で入力してください。")
-            return
-        print(f"\n--- {room_name} の予約状況 ({date_str}) ---")
-        room_reservations = sorted([r for r in self.reservations if r['room_name'] == room_name and r['start_time'].date() == target_date], key=lambda x: x['start_time'])
-        if not room_reservations:
-            print("この日の予約はありません。")
-            return
-        for r in room_reservations:
-            print(f"・ {r['start_time'].strftime('%H:%M')} - {r['end_time'].strftime('%H:%M')} | {r['user_name']}さん (目的: {r['purpose']}) [ID: {r['id']}]")
+    def save_users(self):
+        with open(self.user_file, 'w', encoding='utf-8') as f:
+            json.dump(self.users, f, indent=4, ensure_ascii=False)
 
-    def cancel_reservation(self, reservation_id):
-        target_reservation = next((r for r in self.reservations if r['id'] == reservation_id), None)
-        if not target_reservation:
-            print(f"エラー: ID '{reservation_id}' の予約が見つかりません。")
-            return False
-        self.reservations.remove(target_reservation)
-        self.save_to_file()
-        print(f"キャンセル完了: {target_reservation['room_name']} の {target_reservation['user_name']}さんの予約を削除しました。")
-        return True
+    def find_user_by_username(self, username):
+        return next((u for u in self.users if u['username'] == username), None)
 
-    def import_holidays_as_reservations(self, api_key, year, month):
-        print(f"\n--- {year}年{month}月の祝日をGoogleカレンダーから取得します ---")
-        try:
-            service = build('calendar', 'v3', developerKey=api_key)
-            start_of_month = datetime.datetime(year, month, 1)
-            end_of_month_day = monthrange(year, month)[1]
-            end_of_month = datetime.datetime(year, month, end_of_month_day, 23, 59, 59)
-            events_result = service.events().list(calendarId='ja.japanese#holiday@group.v.calendar.google.com', timeMin=start_of_month.isoformat()+'Z', timeMax=end_of_month.isoformat()+'Z', singleEvents=True, orderBy='startTime').execute()
-            holidays = events_result.get('items', [])
-            if not holidays:
-                print("祝日は見つかりませんでした。")
-                return
-            imported_count = 0
-            for holiday in holidays:
-                holiday_name = holiday['summary']
-                date_str = holiday['start'].get('date')
-                for room in self.rooms:
-                    is_already = any(r['purpose'] == holiday_name and r['room_name'] == room and r['start_time'].date().isoformat() == date_str for r in self.reservations)
-                    if not is_already:
-                        print(f"  > {date_str} ({holiday_name}) を {room} の予約として追加します。")
-                        self.make_reservation("祝日", holiday_name, room, f"{date_str} 09:00", f"{date_str} 23:30")
-                        imported_count += 1
-            if imported_count > 0:
-                print(f"--- {imported_count}件の祝日予約を取り込みました ---")
-            else:
-                print("--- 新しく取り込む祝日はありませんでした ---")
-        except Exception as e:
-            print(f"エラー: Googleカレンダーからの祝日取得に失敗しました。 > {e}")
-            print("  > APIキーが正しいか、Google Calendar APIが有効になっているか確認してください。")
+    def find_user_by_id(self, user_id):
+        return next((u for u in self.users if u['id'] == user_id), None)
+
+    def add_user(self, username, password):
+        if self.find_user_by_username(username):
+            return None
+        new_user = {
+            "id": str(uuid.uuid4()), "username": username,
+            "password_hash": generate_password_hash(password)
+        }
+        self.users.append(new_user)
+        self.save_users()
+        return new_user  
 
 # --- ここからシステムの実行デモ ---
 if __name__ == "__main__":
+    
+    # 1. システムの準備
     system = ReservationSystem()
+    
+    # ★ここから祝日を取り込むデモを追加
+    # =================================================================
+    # ★ここに、ご自身で取得したAPIキーの文字列を貼り付けてください
+    # =================================================================
+    MY_API_KEY = "AIzaSyCTaK9UFVEMpucy-1cSRpoxLuYXGGRHL0c"
 
-    # ★修正: コードに直接書く代わりに、環境変数からAPIキーを読み込む
-    # os.environ.get('GOOGLE_API_KEY') は「GOOGLE_API_KEYという名前の環境変数をください」という意味
-    MY_API_KEY = os.environ.get('GOOGLE_API_KEY')
-
-    # MY_API_KEYが設定されていない場合（ローカルPCでテストする時など）
-    if not MY_API_KEY:
-        print("【注意】APIキーが環境変数に設定されていません。祝日の取り込みをスキップします。")
+    if MY_API_KEY == "AIzaSyCTaK9UFVEMpucy-1cSRpoxLuYXGGRHL0c":
+        print("【注意】APIキーが設定されていません。祝日の取り込みをスキップします。")
     else:
-        # 今月の祝日を取り込むように変更
-        today = datetime.date.today()
-        system.import_holidays_as_reservations(api_key=MY_API_KEY, year=today.year, month=today.month)
+        # 来月(2025年7月)の祝日を取り込んでみましょう
+        system.import_holidays_as_reservations(api_key=MY_API_KEY, year=2025, month=7)
+
+    # 2. 今日の予約状況を表示
+    TODAY = datetime.date.today().strftime("%Y-%m-%d")
+    print("\n【会議室予約システム デモ】\n")
+    print("--- STEP1: 今日の予約状況の表示 ---")
+    for room in system.rooms:
+        system.show_reservations(room, TODAY)
+
+    # 3. 来月の祝日（海の日: 7/21）が登録されているか確認
+    print("\n--- STEP2: 来月の祝日の予約状況を確認 ---")
+    system.show_reservations("会議室A", "2025-07-21")
