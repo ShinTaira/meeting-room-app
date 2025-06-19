@@ -36,7 +36,7 @@
                                   <button type="submit" title="キャンセルする" class="cancel-btn">✕</button>
                               </form>
                               {% endif %}
-                              {{ cell_data.purpose }} ({{ cell_data.user }})
+                              {{ cell_data.purpose }} ({{ cell_data.reserver_name }})
                           </div>
                       {% endif %}
                   {% endfor %}
@@ -55,6 +55,7 @@
                     <p><label>会議室:</label><select name="room_name">{% for r in rooms %}<option value="{{r}}">{{r}}</option>{% endfor %}</select></p>
                     <p><label>目的:</label><input type="text" name="purpose" required></p>
                     <p><label>日付:</label><input type="date" name="date" value="{{ target_date_str }}" required></p>
+                    <p><label>予約者名:</label><input type="text" name="reserver_name" required></p>
                     <p><label>開始時刻:</label><select name="start_time"></select></p>
                     <p><label>終了時刻:</label><select name="end_time"></select></p>
                     <p><label>繰り返し:</label><select name="repeat_type"><option value="none" selected>なし</option><option value="weekly">毎週</option><option value="monthly">毎月</option></select></p>

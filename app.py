@@ -7,13 +7,20 @@ import datetime
 import uuid
 import os
 
+# --- 正しい修正後のコード ---
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your_default_secret_key')
 
 # --- データベース設定 ---
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
+uri = os.environ.get('DATABASE_URL')
+if uri and uri.startswith("postgres://"):
+    uri = uri.replace("postgres://", "postgresql://", 1)
+app.config['SQLALCHEMY_DATABASE_URI'] = uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 db = SQLAlchemy(app)
+
+# (これ以降は変更なし)
 
 # --- Flask-Loginの設定 ---
 login_manager = LoginManager()
@@ -43,6 +50,7 @@ class Reservation(db.Model):
     __tablename__ = 'reservations'
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     purpose = db.Column(db.String(120), nullable=False)
+    reserver_name = db.Column(db.String(80), nullable=False)
     room_name = db.Column(db.String(80), nullable=False)
     start_time = db.Column(db.DateTime, nullable=False)
     end_time = db.Column(db.DateTime, nullable=False)
@@ -135,6 +143,7 @@ def index(date_str=None):
                     height_pixel = duration_minutes
                     cell_data = {
                         "user": res.booker.username, "purpose": res.purpose, "id": res.id,
+                        "reserver_name": res.reserver_name,
                         "top": top_pixel, "height": height_pixel - 2,
                         "is_first_block": res.start_time.time() == time_as_dt,
                         "user_id": res.user_id
@@ -153,6 +162,7 @@ def index(date_str=None):
 @app.route('/reserve', methods=['POST'])
 @login_required
 def reserve():
+    reserver_name = request.form['reserver_name']
     room_name = request.form['room_name']
     purpose = request.form['purpose']
     date_str = request.form['date']
@@ -182,6 +192,7 @@ def reserve():
         if not overlap:
             new_reservation = Reservation(
                 purpose=purpose, room_name=room_name,
+                reserver_name=reserver_name,
                 start_time=res_time['start'], end_time=res_time['end'],
                 user_id=current_user.id
             )
