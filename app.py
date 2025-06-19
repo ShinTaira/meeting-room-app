@@ -28,7 +28,7 @@ class User(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
-    reservations = db.relationship('Reservation', backref='booker', lazy=True)
+    reservations = db.relationship('Reservation', backref='booker', lazy=True, cascade="all, delete-orphan")
 
     def is_active(self):
         return True
